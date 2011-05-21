@@ -81,11 +81,7 @@ var zen_coding = (function(){
 		// IE fails to split string by regexp,
 		// need to normalize newlines first
 		// Also, Mozilla's Rhiho JS engine has a wierd newline bug
-		var lines = (text || '')
-			.replace(/\r\n/g, '\n')
-			.replace(/\n\r/g, '\n')
-			.replace(/\r/g, '\n')
-			.split('\n');
+		var lines = (text || '').split(newline);
 
 		if (remove_empty)
 			for (var i = lines.length; i--; ) {
@@ -102,7 +98,7 @@ var zen_coding = (function(){
 	 * @return {String}
 	 */
 	function trim(text) {
-		return (text || "").replace( /^\s+|\s+$/g, "" );
+		return (text || '').replace(/^\s+/, '').replace(/\s+$/, '');
 	}
 
 	function createProfile(options) {
@@ -142,10 +138,9 @@ var zen_coding = (function(){
 				? repeatString(getIndentation(), pad)
 				: pad;
 
-		var lines = splitByLines(text),
-		    nl = getNewline();
+		var lines = splitByLines(text);
 
-		return lines.join(nl + pad_str);
+		return lines.join(newline + pad_str);
 	}
 
 	/**
@@ -218,6 +213,25 @@ var zen_coding = (function(){
 	}
 
 	/**
+	 * Test if text contains output placeholder $#
+	 * @param {String} text
+	 * @return {Boolean}
+	 */
+	function hasOutputPlaceholder(/* String */ text) {
+		for (var i = 0, il = text.length; i < il; i++) {
+			var ch = text.charAt(i);
+			if (ch == '\\') { // escaped char
+				i++;
+				continue;
+			} else if (ch == '$' && text.charAt(i + 1) == '#') {
+				return true;
+			}
+		}
+		
+		return false;
+	}
+	
+	/**
 	 * Tag
 	 * @class
 	 * @param {zen_parser.TreeNode} node Parsed tree node
@@ -241,7 +255,9 @@ var zen_coding = (function(){
 		this._content = '';
 		this._paste_content = '';
 		this.repeat_by_lines = node.is_repeating;
+		this.is_repeating = node && node.count > 1;
 		this.parent = null;
+		this.has_implicit_name = node.has_implict_name;
 
 		this.setContent(node.text);
 
@@ -378,11 +394,14 @@ var zen_coding = (function(){
 		this.children = [];
 		this._content = node.text || '';
 		this.repeat_by_lines = node.is_repeating;
-		this.attributes = {'id': getCaretPlaceholder(), 'class': getCaretPlaceholder()};
+		this.is_repeating = node && node.count > 1;
+		this.attributes = [];
 		this.value = replaceUnescapedSymbol(getSnippet(type, this.name), '|', getCaretPlaceholder());
 		this.parent = null;
 		this.syntax = type;
 
+		this.addAttribute('id', getCaretPlaceholder());
+		this.addAttribute('class', getCaretPlaceholder());
 		this.copyAttributes(node);
 	}
 
@@ -421,7 +440,7 @@ var zen_coding = (function(){
 	 * @return {String}
 	 */
 	function getIndentation() {
-		return zen_resources.getVariable('indentation');
+		return getVariable('indentation');
 	}
 
 	/**
@@ -435,6 +454,9 @@ var zen_coding = (function(){
 		this.real_name = tag.real_name;
 		this.children = [];
 		this.counter = 1;
+		this.is_repeating = tag.is_repeating;
+		this.repeat_by_lines = tag.repeat_by_lines;
+		this.has_implicit_name = this.type == 'tag' && tag.has_implicit_name;
 
 		// create deep copy of attribute list so we can change
 		// their values in runtime without affecting other nodes
@@ -474,6 +496,11 @@ var zen_coding = (function(){
 		 */
 		addChild: function(tag) {
 			tag.parent = this;
+			
+			// check for implicit name
+			if (tag.has_implicit_name && this.isInline())
+				tag.name = 'span';
+			
 			var last_child = this.children[this.children.length - 1];
 			if (last_child) {
 				tag.previousSibling = last_child;
@@ -589,49 +616,78 @@ var zen_coding = (function(){
 		},
 
 		/**
+		 * Test if current element contains output placeholder (aka $#)
+		 * @return {Boolean}
+		 */
+		hasOutputPlaceholder: function() {
+			if (hasOutputPlaceholder(this.content)) {
+				return true;
+			} else {
+				// search inside attributes
+				for (var i = 0, il = this.attributes.length; i < il; i++) {
+					if (hasOutputPlaceholder(this.attributes[i].value))
+						return true;
+				}
+			}
+			
+			return false;
+		},
+		
+		/**
+		 * Recursively search for elements with output placeholders (aka $#)
+		 * inside current element (not included in result)
+		 * @param {Array} _arr
+		 * @return {Array} Array of elements with output placeholders.  
+		 */
+		findElementsWithOutputPlaceholder: function(_arr) {
+			_arr = _arr || [];
+			for (var i = 0, il = this.children.length; i < il; i++) {
+				if (this.children[i].hasOutputPlaceholder()) {
+					_arr.push(this.children[i]);
+				}
+				this.children[i].findElementsWithOutputPlaceholder(_arr);
+			}
+			return _arr;
+		},
+		
+		/**
 		 * Paste content in context of current node. Pasting is a special case
 		 * of recursive adding content in node.
-		 * This function will try to find ${output} variable inside node's
+		 * This function will try to find $# placeholder inside node's 
 		 * attributes and text content and replace in with <code>text</code>.
-		 * If it doesn't find ${output} variable, it will put <code>text</code>
+		 * If it doesn't find $# placeholder, it will put <code>text</code>
 		 * value as the deepest child content
-		 * @param {String} text Test to paste
-		 * @param {Number} [had_var] Flag indicating that previous function run
-		 * (basically, on node's parent) had replaced ${output} variable (1),
-		 * pasted as node content (2) or did nothing (0)
-		 * @return {Number} Is text was pasted as ${output} variable
+		 * @param {String} text Text to paste
 		 */
-		pasteContent: function(text, had_var) {
-			had_var = had_var || 0;
-			var fn = function(str, p1) {
-				if (p1 == 'output') {
-					had_var = 1;
-					return text;
+		pasteContent: function(text) {
+			var symbol = '$#',
+				r = [symbol, text],
+				replace_fn = function() {return r;},
+				/** @type {ZenNode[]} */
+				items = [];
+
+			if (this.hasOutputPlaceholder())
+				items.push(this);
+
+			items = items.concat(this.findElementsWithOutputPlaceholder());
+
+			if (items.length) {
+				for (var i = 0, il = items.length; i < il; i++) {
+					/** @type {ZenNode} */
+					var item = items[i];
+					item.content = replaceUnescapedSymbol(item.content, symbol, replace_fn);
+					for (var j = 0, jl = item.attributes.length; j < jl; j++) {
+						var a = item.attributes[j];
+						a.value = replaceUnescapedSymbol(a.value, symbol, replace_fn);
 				}
-
-				return str;
-			};
-
-			for (var i = 0, il = this.attributes.length; i < il; i++) {
-				var a = this.attributes[i];
-				a.value = replaceVariables(a.value, fn);
 			}
-
-			this.content = replaceVariables(this.content, fn);
-			if (this.hasChildren()) {
-				for (var i = 0, il = this.children.length; i < il; i++) {
-					had_var = this.children[i].pasteContent(text, had_var);
-					if (had_var == 2) return had_var;
-				}
-			} else if (had_var == 0) {
-				// put text as node content
-				this.content += text;
-				return 2;
-			}
-
-			return had_var;
+			} else {
+				// no placeholders found, add content to the deepest child
+				var child = this.findDeepestChild() || this;
+				child.content += text;
 		}
 	}
+	};
 
 	/**
 	 * Roll outs basic Zen Coding tree into simplified, DOM-like tree.
@@ -875,7 +931,7 @@ var zen_coding = (function(){
 		 * <code>zen_editor</code> instance.
 		 */
 		registerAction: function(name, fn) {
-			this.actions[name] = fn;
+			this.actions[name.toLowerCase()] = fn;
 		},
 
 		/**
@@ -892,6 +948,7 @@ var zen_coding = (function(){
 			if (!(args instanceof Array))
 				args = Array.prototype.slice.call(arguments, 1);
 
+			name = name.toLowerCase();
 			if (name in this.actions)
 				return this.actions[name].apply(this, args);
 		},
@@ -995,6 +1052,8 @@ var zen_coding = (function(){
 
 		setNewline: function(str) {
 			newline = str;
+			this.setVariable('newline', str);
+			this.setVariable('nl', str);
 		},
 
 		/**
@@ -1008,13 +1067,21 @@ var zen_coding = (function(){
 		 */
 		wrapWithAbbreviation: function(abbr, text, type, profile) {
 			type = type || 'html';
-			var tree_root = this.parseIntoTree(abbr, type);
+			var tree_root = this.parseIntoTree(abbr, type),
+				pasted = false;
+				
 			if (tree_root) {
-				var repeat_elem = tree_root.multiply_elem || tree_root.last;
-				repeat_elem.setPasteContent(text);
-				repeat_elem.repeat_by_lines = !!tree_root.multiply_elem;
+				if (tree_root.multiply_elem) {
+					// we have a repeating element, put content in
+					tree_root.multiply_elem.setPasteContent(text);
+					tree_root.multiply_elem.repeat_by_lines = pasted = true;
+				}
 
 				var tree = rolloutTree(tree_root);
+				
+				if (!pasted) 
+					tree.pasteContent(text);
+				
 				this.applyFilters(tree, type, profile, tree_root.filters);
 				return replaceVariables(tree.toString());
 			}
@@ -1031,7 +1098,7 @@ var zen_coding = (function(){
 		 * @return {Boolean}
 		 */
 		isInsideTag: function(html, cursor_pos) {
-			var re_tag = /^<\/?\w[\w\:\-]*[^>]*?>/;
+			var re_tag = /^<\/?\w[\w\:\-]*.*?>/;
 
 			// search left to find opening brace
 			var pos = html.substring(0, cursor_pos).lastIndexOf('<');
@@ -1057,23 +1124,21 @@ var zen_coding = (function(){
 		 * @param {Number} from
 		 */
 		getLineBounds: function(text, from) {
-			var end = from;
-			// lastIndexOf and search generally faster than iterating characters
-			// to find line breaks especially for long strings
+			// Search for start of the line
+			var nl = zen_coding.getNewline(),
+			    start = text.substring(0, from).lastIndexOf(nl);
+			if (~start)
+				start += nl.length;
+			else
+				start = 0;
 
-			// Search for start of the line (regular expressions too slow here)
-			var first_part = text.substring(0, from),
-			    lf = first_part.lastIndexOf('\n'),
-			    cr = first_part.lastIndexOf('\r');
-			from = (lf > cr ? lf : cr) + 1;
-
-			// Search for end of the line (let the engine do the work for us)
-			var end_search = text.substring(end).search(/[\n\r]/);
-			~end_search ?
-				end += end_search :
+			// Search for end of the line
+			var end = text.substring(from).indexOf(nl);
+			~end ?
+				end += from :
 				end = text.length;
 
-			return {start: from, end: end};
+			return {start: start, end: end};
 		},
 
 		/**
@@ -1208,17 +1273,20 @@ var zen_coding = (function(){
 		 */
 		upgradeTabstops: function(node, offset) {
 			var max_num = 0,
-			    props = ['start', 'end', 'content'];
+				props = ['start', 'end', 'content'],
+				escape_fn = function(ch){ return '\\' + ch; },
+				tabstop_fn = function(i, num, value) {
+					num = parseInt(num);
+					if (num > max_num) max_num = num;
 
-			for (var i = 0, il = props.length; i < il; i++) {
-				node[props[i]] = node[props[i]].replace(/\$(\d+)|\$\{(\d+)(\:[^\}]+)?\}/g, function(str, p1, p2){
-					var num = parseInt(p1 || p2, 10);
-					if (num > max_num)
-						max_num = num;
+					if (value)
+						return '${' + (num + offset) + ':' + value + '}';
+					else
+						return '$' + (num + offset);
+				};
 
-					return str.replace(/\d+/, num + offset);
-				});
-			}
+			for (var i = 0, il = props.length; i < il; i++)
+				node[props[i]] = this.processTextBeforePaste(node[props[i]], escape_fn, tabstop_fn);
 
 			return max_num;
 		},
@@ -1230,5 +1298,98 @@ var zen_coding = (function(){
 		getProfile: function(name) {
 			return (name in profiles) ? profiles[name] : profiles['plain'];
 		},
+		
+		/**
+		 * Returns context-aware node counter
+		 * @param {node} ZenNode
+		 * @return {Number}
+		 */
+		getCounterForNode: function(node) {
+			// find nearest repeating parent
+			var counter = node.counter;
+			if (!node.is_repeating && !node.repeat_by_lines) {
+				while ( (node = node.parent) ) {
+					if (node.is_repeating || node.repeat_by_lines)
+						return node.counter;
+				}
+			}
+			
+			return counter;
+		},
+		
+		/**
+		 * Process text that should be pasted into editor: clear escaped text and
+		 * handle tabstops
+		 * @param {String} text
+		 * @param {Function} escape_fn Handle escaped character. Must return
+		 * replaced value
+		 * @param {Function} tabstop_fn Callback function that will be called on every
+		 * tabstob occurance, passing <b>index</b>, <code>number</code> and 
+		 * <b>value</b> (if exists) arguments. This function must return 
+		 * replacement value
+		 * @return {String} 
+		 */
+		processTextBeforePaste: function(text, escape_fn, tabstop_fn) {
+			var i = 0, il = text.length, start_ix, _i,
+				str_builder = [];
+				
+			var nextWhile = function(ix, fn) {
+				while (ix < il) if (!fn(text.charAt(ix++))) break;
+				return ix - 1;
+			};
+			
+			while (i < il) {
+				var ch = text.charAt(i);
+				if (ch == '\\' && i + 1 < il) {
+					// handle escaped character
+					str_builder.push(escape_fn(text.charAt(i + 1)));
+					i += 2;
+					continue;
+				} else if (ch == '$') {
+					// looks like a tabstop
+					var next_ch = text.charAt(i + 1) || '';
+					_i = i;
+					if (this.isNumeric(next_ch)) {
+						// $N placeholder
+						start_ix = i + 1;
+						i = nextWhile(start_ix, this.isNumeric);
+						if (start_ix < i) {
+							str_builder.push(tabstop_fn(_i, text.substring(start_ix, i)));
+							continue;
+						}
+					} else if (next_ch == '{') {
+						// ${N:value} or ${N} placeholder
+						var brace_count = 1;
+						start_ix = i + 2;
+						i = nextWhile(start_ix, this.isNumeric);
+						
+						if (i > start_ix) {
+							if (text.charAt(i) == '}') {
+								str_builder.push(tabstop_fn(_i, text.substring(start_ix, i)));
+								i++; // handle closing brace
+								continue;
+							} else if (text.charAt(i) == ':') {
+								var val_start = i + 2;
+								i = nextWhile(val_start, function(c) {
+									if (c == '{') brace_count++;
+									else if (c == '}') brace_count--;
+									return !!brace_count;
+								});
+								str_builder.push(tabstop_fn(_i, text.substring(start_ix, val_start - 2), text.substring(val_start - 1, i)));
+								i++; // handle closing brace
+								continue;
+							}
+						}
+					}
+					i = _i;
+				}
+				
+				// push current character to stack
+				str_builder.push(ch);
+				i++;
+			}
+			
+			return str_builder.join('');
+		}
 	}
 })();

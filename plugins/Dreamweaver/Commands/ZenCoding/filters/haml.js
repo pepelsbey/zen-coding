@@ -74,6 +74,16 @@
 		item.start = item.start.replace('%s', zen_coding.padString(start, padding));
 		item.end = item.end.replace('%s', zen_coding.padString(end, padding));
 
+		// replace variables ID and CLASS
+		var cb = function(str, var_name) {
+			if (var_name == 'id' || var_name == 'class')
+				return item.getAttribute(var_name);
+			else
+				return str;
+		};
+		item.start = zen_coding.replaceVariables(item.start, cb);
+		item.end = zen_coding.replaceVariables(item.end, cb);
+		
 		return item;
 	}
 
@@ -150,8 +160,9 @@
 				: processSnippet(item, profile, level);
 
 			// replace counters
-			item.start = zen_coding.unescapeText(zen_coding.replaceCounter(item.start, item.counter));
-			item.end = zen_coding.unescapeText(zen_coding.replaceCounter(item.end, item.counter));
+			var counter = zen_coding.getCounterForNode(item);
+			item.start = zen_coding.unescapeText(zen_coding.replaceCounter(item.start, counter));
+			item.end = zen_coding.unescapeText(zen_coding.replaceCounter(item.end, counter));
 
 			process(item, profile, level + 1);
 		}

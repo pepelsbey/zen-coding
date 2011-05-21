@@ -162,14 +162,6 @@
 			return this[this.length - 1];
 		}
 
-		function searchCommentStart(from) {
-			for (var bkw_text; ~from && html.substr(from, 4) != '<!--'; ) {
-				bkw_text = html.substring(0, from);
-				from = bkw_text.lastIndexOf('<');
-			}
-			return from;
-		}
-
 		// find opening tag
 		ix = start_ix;
 		while (ix-- && ix >= 0) {
@@ -203,7 +195,7 @@
 				}
 			} else if (ch == '-' && html.substr(ix, 3) == '-->') { // found comment end
 				// search left until comment start is reached
-				ix = searchCommentStart(ix);
+				ix = html.substring(0, ix).lastIndexOf('<!--');
 			}
 		}
 
@@ -236,7 +228,7 @@
 					// looks like cursor was inside comment with invalid HTML
 					if (!forward_stack.last() || forward_stack.last().type != 'comment') {
 						var end_ix = ix + 3;
-						return action(comment( searchCommentStart(ix), end_ix ));
+						return action(comment( html.substring(0, ix).lastIndexOf('<!--'), end_ix ));
 					}
 				}
 			}

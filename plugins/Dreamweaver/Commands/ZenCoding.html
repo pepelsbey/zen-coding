@@ -8,6 +8,11 @@
 <script type="text/javascript" src="ZenCoding/html_matcher.js"></script>
 <script type="text/javascript" src="ZenCoding/zen_editor.js"></script>
 <script type="text/javascript" src="ZenCoding/zen_actions.js"></script>
+<script type="text/javascript" src="ZenCoding/parsers/parsexml.js"></script>
+<script type="text/javascript" src="ZenCoding/parsers/sex.js"></script>
+<script type="text/javascript" src="ZenCoding/parsers/parserutils.js"></script>
+<script type="text/javascript" src="ZenCoding/parsers/actions.js"></script>
+<script type="text/javascript" src="ZenCoding/parsers/traverse-actions.js"></script>
 <script type="text/javascript" src="ZenCoding/filters/comment.js"></script>
 <script type="text/javascript" src="ZenCoding/filters/css.js"></script>
 <script type="text/javascript" src="ZenCoding/filters/escape.js"></script>
@@ -19,8 +24,18 @@
 <script type="text/javascript" src="ZenCoding/filters/trim.js"></script>
 <script type="text/javascript" src="ZenCoding/filters/xsl.js"></script>
 <script type="text/javascript">
+function canAcceptCommand() {
+	var viewmode = dw.getFocus(true);
+	switch(viewmode) {
+		case 'textView':
+		case 'html':
+			return true;
+	}
+	return false;
+}
+
 function receiveArguments(name) {
-	if ( !zen_editor.setContext()) return false;
+	if ( !zen_editor.setContext() ) return false;
 	return zen_coding.runAction(name, zen_editor);
 }
 </script>

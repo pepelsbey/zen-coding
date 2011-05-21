@@ -74,10 +74,30 @@ function expandAbbreviation(editor, syntax, profile_name) {
 function expandAbbreviationWithTab(editor, syntax, profile_name) {
 	syntax = syntax || editor.getSyntax(true);
 	profile_name = profile_name || editor.getProfileName();
-	var selection = editor.getSelectionRange();
-	if (syntax == 'text' || selection.start != selection.end
-	     || !expandAbbreviation(editor, syntax, profile_name))
-		editor.replaceContent(zen_coding.getVariable('indentation'), selection.start, selection.end);
+	var selection = editor.getSelectionRange(),
+	    indent = zen_coding.getVariable('indentation')
+	    nl = zen_coding.getNewline(),
+	    content = editor.getContent();
+	if (~content.substring(selection.start,selection.end).indexOf(nl)) {
+		// Pad multiline selection
+		var start = content.substring(0,selection.start).lastIndexOf(nl),
+			end = content.substring(selection.end).indexOf(nl);
+		if (~start)
+			start += nl.length;
+		else
+			start = 0;
+		if (~end)
+			end += selection.end;
+		else
+			end = content.length;
+		var pad_content = indent  + zen_coding.padString(content.substring(start,end), indent);
+		editor.replaceContent(pad_content, start, end, true);
+		editor.createSelection(start, start + pad_content.length);
+	} else if (syntax == 'text' ||
+	           selection.start != selection.end ||
+	           !expandAbbreviation(editor, syntax, profile_name)) {
+		editor.replaceContent(indent, selection.start, selection.end);
+	}
 }
 
 /**
@@ -260,12 +280,15 @@ function findNewEditPoint(editor, inc, offset) {
 	    next_point = -1;
 
 	function getLine(ix) {
-		var first_part = content.substring(0, ix),
-		    lf = first_part.lastIndexOf('\n'),
-		    cr = first_part.lastIndexOf('\r'),
-		    start = (lf > cr ? lf : cr) + 1;
+		var nl = zen_coding.getNewline(),
+		    start = content.substring(0, ix).lastIndexOf(nl);
 
-		return first_part.substring(start);
+		if (~start)
+			start += nl.length;
+		else
+			start = 0;
+
+		return content.substring(start);
 	}
 
 	while ( (cur_point += inc) > 0 && cur_point < max_len && !~next_point) {
@@ -628,14 +651,11 @@ function searchComment(text, from, start_token, end_token) {
 	    start_token_len = start_token.length;
 
 	// search for comment start
-	do {
-		bkw_text = text.substring(0, from);
-		from = bkw_text.lastIndexOf(start_ch);
-		if (!~from) return null;
-	} while (text.substr(from, start_token_len) != start_token);
+	from = text.substring(0, from).lastIndexOf(start_token);
+	if (!~from) return null;
 
 	// search for comment end
-	var end_ix = text.substring(from).search(end_token.replace(re_specials, "\\$&"));
+	var end_ix = text.substring(from).indexOf(end_token);
 	if (~end_ix)
 		end_ix += from + end_token.length;
 	else

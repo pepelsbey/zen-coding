@@ -23,6 +23,7 @@ var zen_parser = (function(){
 		this.text = null;
 		this.attributes = [];
 		this.is_repeating = false;
+		this.has_implict_name = false;
 	}
 
 	TreeNode.prototype = {
@@ -76,10 +77,8 @@ var zen_parser = (function(){
 
 				if (name) {
 					var attr_result = parseAttributes(name);
-					this.name = attr_result[0]
-						|| (this.parent
-						&& zen_resources.isItemInCollection('html', 'inline_level', this.parent.name) ?
-						'span' : 'div');
+					this.name = attr_result[0] || 'div';
+					this.has_implict_name = !attr_result[0];
 					this.attributes = attr_result[1];
 				}
 			}

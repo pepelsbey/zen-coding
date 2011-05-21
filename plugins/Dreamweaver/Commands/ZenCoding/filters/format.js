@@ -57,7 +57,7 @@
 
 		// calculate how many inline siblings we have
 		var node_count = 1;
-		while (node = node.nextSibling) {
+		while ( (node = node.nextSibling) ) {
 			if (node.type == 'text' || !node.isInline())
 				node_count = 0;
 			else if (node.isInline())
@@ -155,6 +155,8 @@
 
 				} else if (item.isInline() && hasBlockSibling(item) && !isVeryFirstChild(item)) {
 					item.start = getNewline() + padding + item.start;
+				} else if (item.isInline() && item.hasBlockChildren()) {
+					item.end = getNewline() + padding + item.end;
 				}
 
 				item.padding = padding + getIndentation();

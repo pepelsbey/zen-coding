@@ -22,7 +22,6 @@ var zen_editor = (function(){
 	    indent_size = 1,
 	    indent_tabs = 'TRUE',
 	    // Check for style attribute
-	    re_style_attr = /(\bstyle\s*=\s*)("[^"]*|'[^']*)$/,
 	    syntax_bounds;
 
 	/**
@@ -99,7 +98,9 @@ var zen_editor = (function(){
 			    dw_use_tabs = dw.getPreferenceString('Source Format', 'Use Tabs', 'TRUE');
 
 			// Apply settings if they differs.
-			if (indent_size == dw_indent_size && indent_tabs == dw_use_tabs) return true;
+			if (indent_size == dw_indent_size &&
+			    indent_tabs == dw_use_tabs)
+				return true;
 
 			indent_size = dw_indent_size;
 			indent_tabs = dw_use_tabs;
@@ -255,20 +256,25 @@ var zen_editor = (function(){
 		 * @return {String}
 		 */
 		getSyntax: function(for_abbr){
-			var content = getContent(),
-			    sel = dom.source.getSelection(),
-			    caret_pos = sel[1],
-			    parse_mode = dom.getParseMode(),
-			    m;
+			var parse_mode = dom.getParseMode();
 
 			if (~dom.documentType.indexOf('XSLT'))
-				parseMode = 'xsl';
+				parse_mode = 'xsl';
 
 			if (parse_mode == 'html') {
-				var pair = zen_coding.html_matcher.getTags(content, caret_pos); // get the context tag
+				var content = getContent(),
+					sel = dom.source.getSelection(),
+					caret_pos = sel[1],
+					pair = zen_coding.html_matcher.getTags(content, caret_pos), // get the context tag
+					re_style_attr = /(\bstyle\s*=\s*)("[^"]*|'[^']*)$/,
+					m;
+
 				if (pair && pair[0] && pair[0].type == 'tag') {
 					// check if we're inside <style> tag
-					if( (pair[0].name.toLowerCase() == 'style' && pair[0].end <= caret_pos && pair[1].start >= caret_pos) ) {
+					if ( (pair[0].name.toLowerCase() == 'style' &&
+					      pair[0].end <= caret_pos &&
+					      pair[1].start >= caret_pos)
+					   ) {
 						syntax_bounds = {
 							start: pair[0].end,
 							end: pair[1].start,
@@ -277,7 +283,9 @@ var zen_editor = (function(){
 						parse_mode = 'css';
 					}
 					// or inside style attribute
-					else if ( (for_abbr || sel[0] != sel[1]) && sel[1] < pair[0].end && ( m = content.substring(pair[0].start, sel[0]).match(re_style_attr) ) ) {
+					else if ( (for_abbr || sel[0] != sel[1]) &&
+					           sel[1] < pair[0].end &&
+					           ( m = content.substring(pair[0].start, sel[0]).match(re_style_attr) ) ) {
 						syntax_bounds = {
 							start: pair[0].start + m.index + m[1].length + 1,
 							end: caret_pos + content.substring(caret_pos, pair[0].end).indexOf(m[2].charAt(0)),

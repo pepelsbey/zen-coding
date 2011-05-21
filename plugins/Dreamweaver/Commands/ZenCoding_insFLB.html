@@ -1,0 +1,37 @@
+<!-- MENU-LOCATION=NONE -->
+<html xmlns:MMString="http://www.macromedia.com/schemes/data/string/">
+<script type="text/javascript" src="ZenCoding/zen_settings.js"></script>
+<script type="text/javascript" src="ZenCoding/my_zen_settings.js"></script>
+<script type="text/javascript" src="ZenCoding/zen_parser.js"></script>
+<script type="text/javascript" src="ZenCoding/zen_resources.js"></script>
+<script type="text/javascript" src="ZenCoding/zen_coding.js"></script>
+<script type="text/javascript" src="ZenCoding/html_matcher.js"></script>
+<script type="text/javascript" src="ZenCoding/zen_editor.js"></script>
+<script type="text/javascript" src="ZenCoding/zen_actions.js"></script>
+<script type="text/javascript">
+function canAcceptCommand() {
+	var viewmode = dw.getFocus(true);
+	switch(viewmode) {
+		case 'document': // allow executing in design view
+		case 'textView':
+		case 'html':
+			return true;
+	}
+	return false;
+}
+
+function insertFormattedLineBreak() {
+	var viewmode = dw.getFocus(),
+		dom = dw.getDocumentDOM();
+
+	// Preserve original Ctrl-Enter action in design view
+	if (viewmode == 'document' && ~dom.getView().indexOf('design') && dom.getFocus() == 'body' ) {
+		dom.exitBlock();
+	// or run Zen Coding action in Code view
+	} else {
+		if ( !zen_editor.setContext() ) return false;
+		zen_coding.runAction('insert_formatted_line_break', zen_editor);
+	}
+}
+</script>
+<body onLoad="insertFormattedLineBreak()">

@@ -12,10 +12,13 @@ var zen_settings = {
 		'lang': 'en',
 		'locale': 'en-US',
 		'charset': 'UTF-8',
-//		'profile': 'xhtml', // force profile for html editors
 
 		/** Inner element indentation */
-		'indentation': '\t'
+		'indentation': '\t',
+		
+		// newline variables, useful for wrapping
+		'newline': '\n',
+		'nl': '\n'
 	},
 
 	'css': {
@@ -434,6 +437,9 @@ var zen_settings = {
 			"va:b": "vertical-align:bottom;",
 			"va:tb": "vertical-align:text-bottom;",
 			"va:sub": "vertical-align:sub;",
+			"dir": "direction:;",
+			"dir:l": "direction:ltr;",
+			"dir:r": "direction:rtl;",
 			"ta": "text-align:|;",
 			"ta:l": "text-align:left;",
 			"ta:c": "text-align:center;",
